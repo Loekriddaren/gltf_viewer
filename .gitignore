@@ -1,2 +1,8 @@
-
+/build
+.vs/*
+.vs/
 *.ipch
+/out
+.vs/ProjectSettings.json
+.vs/slnx.sqlite
+.vs/VSWorkspaceState.json
