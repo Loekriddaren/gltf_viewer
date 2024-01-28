@@ -61,7 +61,7 @@ std::string gltf_dir(void)
 
 void do_initialization(Context &ctx)
 {
-    ctx.program = cg::load_shader_program(shader_dir() + "mesh_part4.vert", shader_dir() + "mesh_part2.frag");
+    ctx.program = cg::load_shader_program(shader_dir() + "mesh_part4.vert", shader_dir() + "mesh_part4.frag");
 
     gltf::load_gltf_asset(ctx.gltfFilename, gltf_dir(), ctx.asset);
     gltf::create_drawables_from_gltf_asset(ctx.drawables, ctx.asset);
@@ -78,8 +78,8 @@ void draw_scene(Context &ctx)
     // Define per-scene uniforms
     glUniform1f(glGetUniformLocation(ctx.program, "u_time"), ctx.elapsedTime);
 
+    // Define trackball matrix to move the view
     glm::mat4 view = glm::mat4(ctx.trackball.orient);
-  
     glUniformMatrix4fv(glGetUniformLocation(ctx.program, "u_view"), 1, GL_FALSE, &view[0][0]);
 
     // ...
@@ -111,6 +111,7 @@ void do_rendering(Context &ctx)
 
     // Clear color and depth buffers
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    glClearColor(1.0f, 0.5f, 0.0f, 0.0f);  //orange bg
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     draw_scene(ctx);

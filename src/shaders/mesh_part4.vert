@@ -15,7 +15,7 @@ out vec3 v_color;
 
 void main()
 {
-    gl_Position = u_view * a_position;
+    gl_Position = u_view * a_position; //Apply rotation to the object
     v_color = a_color;
 
 }
