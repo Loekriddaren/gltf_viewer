@@ -22,6 +22,8 @@
 #include <cstdlib>
 #include <iostream>
 
+
+    static ImVec4 bgcolor = ImVec4(0.0f / 255.0f, 0.0f / 255.0f, 0.0f / 255.0f, 255.0f / 255.0f);
 // Struct for our application context
 struct Context {
     int width = 512;
@@ -33,7 +35,7 @@ struct Context {
     GLuint program;
     GLuint emptyVAO;
     float elapsedTime;
-    std::string gltfFilename = "cube_rgb.gltf";
+    std::string gltfFilename = "armadillo.gltf";  //"cube_rgb.gltf";
     // Add more variables here...
 };
 
@@ -61,7 +63,7 @@ std::string gltf_dir(void)
 
 void do_initialization(Context &ctx)
 {
-    ctx.program = cg::load_shader_program(shader_dir() + "mesh_part4.vert", shader_dir() + "mesh_part4.frag");
+    ctx.program = cg::load_shader_program(shader_dir() + "mesh_part_2_1.vert", shader_dir() + "mesh_part_2_1.frag");
 
     gltf::load_gltf_asset(ctx.gltfFilename, gltf_dir(), ctx.asset);
     gltf::create_drawables_from_gltf_asset(ctx.drawables, ctx.asset);
@@ -81,6 +83,14 @@ void draw_scene(Context &ctx)
     // Define trackball matrix to move the view
     glm::mat4 view = glm::mat4(ctx.trackball.orient);
     glUniformMatrix4fv(glGetUniformLocation(ctx.program, "u_view"), 1, GL_FALSE, &view[0][0]);
+
+    // Define trackball matrix to move the view
+    glm::mat4 projection = glm::mat4(1.0f);
+    glUniformMatrix4fv(glGetUniformLocation(ctx.program, "u_projection"), 1, GL_FALSE, &projection[0][0]);
+
+    // Define trackball matrix to move the view
+    glm::mat4 model = glm::mat4(1.0f);
+    glUniformMatrix4fv(glGetUniformLocation(ctx.program, "u_model"), 1, GL_FALSE, &model[0][0]);
 
     // ...
 
@@ -110,8 +120,8 @@ void do_rendering(Context &ctx)
     cg::reset_gl_render_state();
 
     // Clear color and depth buffers
-    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-    glClearColor(1.0f, 0.5f, 0.0f, 0.0f);  //orange bg
+    glClearColor(bgcolor.x, bgcolor.y, bgcolor.z, bgcolor.w);
+    //glClearColor(1.0f, 0.5f, 0.0f, 0.0f);  //orange bg
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     draw_scene(ctx);
@@ -186,6 +196,17 @@ void resize_callback(GLFWwindow *window, int width, int height)
     glViewport(0, 0, width, height);
 }
 
+//CustomGui
+void DrawGui() {
+
+    ImGui::SetNextWindowSize(ImVec2(250, 100));
+    ImGui::Begin("color menu");
+
+     ImGui::ColorEdit3("MyColor##1", (float *)&bgcolor);
+    ImGui::End();
+}
+
+
 int main(int argc, char *argv[])
 {
     Context ctx = Context();
@@ -234,7 +255,8 @@ int main(int argc, char *argv[])
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
-        // ImGui::ShowDemoWindow();
+        DrawGui();
+        //ImGui::ShowDemoWindow();
         do_rendering(ctx);
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
