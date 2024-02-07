@@ -26,8 +26,8 @@
     static ImVec4 bgcolor = ImVec4(0.0f / 255.0f, 0.0f / 255.0f, 0.0f / 255.0f, 255.0f / 255.0f);
 // Struct for our application context
 struct Context {
-    int width = 512;
-    int height = 512;
+    int width = 800;
+    int height = 800;
     GLFWwindow *window;
     gltf::GLTFAsset asset;
     gltf::DrawableList drawables;
@@ -37,6 +37,19 @@ struct Context {
     float elapsedTime;
     std::string gltfFilename = "armadillo.gltf";  //"cube_rgb.gltf";
     // Add more variables here...
+    glm::vec3 ambientColor = glm::vec3(0.5, 0.05, 0.05);
+    glm::vec3 diffuseColor = glm::vec3(0.0, 1.0, 0.5);
+    glm::vec3 specularColor = glm::vec3(1.0, 1.0, 0.0);
+    float specularPower = 80;
+    glm::vec3 lightPosition = glm::vec3(-20.0, 20.0, 10.0);
+    float fov = 25;
+
+    // Bools for checkboxes
+    bool perspective = true;
+    bool ambient = true;
+    bool diffuse = true;
+    bool specular = true;
+    bool normals = false;
 };
 
 // Returns the absolute path to the src/shader directory
@@ -63,7 +76,7 @@ std::string gltf_dir(void)
 
 void do_initialization(Context &ctx)
 {
-    ctx.program = cg::load_shader_program(shader_dir() + "mesh_part_2_2.vert", shader_dir() + "mesh_part_2_2.frag");
+    ctx.program = cg::load_shader_program(shader_dir() + "mesh_part_2_4.vert", shader_dir() + "mesh_part_2_4.frag");
 
     gltf::load_gltf_asset(ctx.gltfFilename, gltf_dir(), ctx.asset);
     gltf::create_drawables_from_gltf_asset(ctx.drawables, ctx.asset);
@@ -86,20 +99,40 @@ void draw_scene(Context &ctx)
     // Define trackball matrix to move the view
     glm::mat4 view = glm::mat4(ctx.trackball.orient);
     //Define camera
-    glm::mat4 camera = glm::lookAt(glm::vec3(0.0f, .0f, 10.0f), glm::vec3(0.0f, 0.0f, 0.0f),glm::vec3(0.0f, -1.0f, 0.0f));
+    glm::mat4 camera = glm::lookAt(glm::vec3(0.0f, .0f, 10.0f), glm::vec3(0.0f, 0.0f, 0.0f),glm::vec3(0.0f, 1.0f, 0.0f));
 
     //Apply trackball to camera
     view = camera * view;
 
     glUniformMatrix4fv(glGetUniformLocation(ctx.program, "u_view"), 1, GL_FALSE, &view[0][0]);
 
-    //define perspective projection matrix
+    //define perspective and orthogonal projection matrix
     float ratio = ctx.width / ctx.height;
-    glm::mat4 persp = glm::perspective(75.0f, ratio, 1.0f, 50.0f);
-    glUniformMatrix4fv(glGetUniformLocation(ctx.program, "u_projection"), 1, GL_FALSE, &persp[0][0]);
+    glm::mat4 projection;
+    if (ctx.perspective){
+        projection = glm::perspective(glm::radians(ctx.fov), ratio, 1.0f, 50.0f);
+    } 
+    else{
+        projection = glm::ortho(-2.0f, 2.0f, -2.0f, 2.0f, 0.0f, 20.0f);
+    }
 
+    glUniformMatrix4fv(glGetUniformLocation(ctx.program, "u_projection"), 1, GL_FALSE, &projection[0][0]);
 
-    // ...
+    //Pass light uniforms to shader (if light is toggled on)
+    glm::vec3 ambient = glm::vec3(0.0f, 0.0f, 0.0f);
+    glm::vec3 diffuse = glm::vec3(0.0, 0.0, 0.0);
+    glm::vec3 specular = glm::vec3(0.0, 0.0, 0.0);
+    if (ctx.ambient) { ambient = ctx.ambientColor; }
+    if (ctx.diffuse) { diffuse = ctx.diffuseColor; }
+    if (ctx.specular) { specular = ctx.specularColor; }
+
+    glUniform3fv(glGetUniformLocation(ctx.program, "u_ambientColor"), 1, &ambient[0]);
+    glUniform3fv(glGetUniformLocation(ctx.program, "u_diffuseColor"), 1, &diffuse[0]);
+    glUniform3fv(glGetUniformLocation(ctx.program, "u_specularColor"), 1, &specular[0]);
+    glUniform3fv(glGetUniformLocation(ctx.program, "u_lightPosition"), 1, &ctx.lightPosition[0]);
+    glUniform1f(glGetUniformLocation(ctx.program, "u_specularPower"), ctx.specularPower);
+    glUniform1f(glGetUniformLocation(ctx.program, "u_normals"), ctx.normals);
+ 
 
     // Draw scene
     for (unsigned i = 0; i < ctx.asset.nodes.size(); ++i) {
@@ -108,7 +141,7 @@ void draw_scene(Context &ctx)
 
         // Define per-object uniforms
         // ...
-        // Define trackball matrix to move the view
+        // Define model matrix
         glm::mat4 model = glm::mat4(1.0f);
         model = glm::translate(model, node.translation);
         model = glm::scale(model, node.scale);
@@ -199,6 +232,9 @@ void scroll_callback(GLFWwindow *window, double x, double y)
     // Forward event to ImGui
     ImGui_ImplGlfw_ScrollCallback(window, x, y);
     if (ImGui::GetIO().WantCaptureMouse) return;
+
+    Context *ctx = static_cast<Context *>(glfwGetWindowUserPointer(window));
+    ctx->fov -= y;
 }
 
 void resize_callback(GLFWwindow *window, int width, int height)
@@ -211,13 +247,51 @@ void resize_callback(GLFWwindow *window, int width, int height)
 }
 
 //CustomGui
-void DrawGui() {
+void DrawGui(Context &ctx)
+{
 
-    ImGui::SetNextWindowSize(ImVec2(250, 100));
+    //ImGui::SetNextWindowSize(ImVec2(250, 250));
     ImGui::Begin("color menu");
 
-     ImGui::ColorEdit3("MyColor##1", (float *)&bgcolor);
+    ImGui::ColorEdit3("Background color", (float *)&bgcolor);
+    ImGui::ColorEdit3("Ambient color", &ctx.ambientColor[0]);
+    ImGui::ColorEdit3("Diffuse color", &ctx.diffuseColor[0]);
+    ImGui::ColorEdit3("Specular color", &ctx.specularColor[0]);
+    ImGui::SliderFloat("Specular power", &ctx.specularPower, 0.0f, 150.0f);
+    ImGui::SliderFloat3("Light position", &ctx.lightPosition[0], -50.0f, 50.0f);
+
+    // Combobox for perspective/orthogonal projection
+    const char *items[] = {"Perspective projection", "Orthogonal projection"};
+    static const char *current_item = items[0];
+    if (ImGui::BeginCombo("Projection", current_item))
+    {
+        for (int n = 0; n < IM_ARRAYSIZE(items); n++) {
+            bool is_selected = (current_item == items[n]);
+            if (ImGui::Selectable(items[n], is_selected)) 
+            { 
+                current_item = items[n]; 
+            }
+        }
+
+        ImGui::EndCombo();
+    }
+    
+    if (current_item == items[0]) { 
+        ctx.perspective = true; 
+    } 
+    else {
+        ctx.perspective = false;
+    }
+
+    //Checkboxes
+    ImGui::Checkbox("Ambient light", &ctx.ambient);
+    ImGui::Checkbox("Diffuse light", &ctx.diffuse);
+    ImGui::Checkbox("Specular light", &ctx.specular);
+    ImGui::Checkbox("Show normals", &ctx.normals);
+
     ImGui::End();
+
+
 }
 
 
@@ -269,7 +343,7 @@ int main(int argc, char *argv[])
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
-        DrawGui();
+        DrawGui(ctx);
         //ImGui::ShowDemoWindow();
         do_rendering(ctx);
         ImGui::Render();

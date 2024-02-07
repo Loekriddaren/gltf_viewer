@@ -9,6 +9,11 @@
     "",
     "\\assets",
     "\\assets\\gltf",
+    "\\external",
+    "\\external\\glfw",
+    "\\external\\glfw\\src",
+    "\\external\\imgui",
+    "\\external\\imgui\\examples",
     "\\src",
     "\\src\\shaders"
   ],
