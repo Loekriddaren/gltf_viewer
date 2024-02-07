@@ -63,7 +63,7 @@ std::string gltf_dir(void)
 
 void do_initialization(Context &ctx)
 {
-    ctx.program = cg::load_shader_program(shader_dir() + "mesh_part_2_1.vert", shader_dir() + "mesh_part_2_1.frag");
+    ctx.program = cg::load_shader_program(shader_dir() + "mesh_part_2_2.vert", shader_dir() + "mesh_part_2_2.frag");
 
     gltf::load_gltf_asset(ctx.gltfFilename, gltf_dir(), ctx.asset);
     gltf::create_drawables_from_gltf_asset(ctx.drawables, ctx.asset);
@@ -80,17 +80,24 @@ void draw_scene(Context &ctx)
     // Define per-scene uniforms
     glUniform1f(glGetUniformLocation(ctx.program, "u_time"), ctx.elapsedTime);
 
+
+
+
     // Define trackball matrix to move the view
     glm::mat4 view = glm::mat4(ctx.trackball.orient);
+    //Define camera
+    glm::mat4 camera = glm::lookAt(glm::vec3(0.0f, .0f, 10.0f), glm::vec3(0.0f, 0.0f, 0.0f),glm::vec3(0.0f, -1.0f, 0.0f));
+
+    //Apply trackball to camera
+    view = camera * view;
+
     glUniformMatrix4fv(glGetUniformLocation(ctx.program, "u_view"), 1, GL_FALSE, &view[0][0]);
 
-    // Define trackball matrix to move the view
-    glm::mat4 projection = glm::mat4(1.0f);
-    glUniformMatrix4fv(glGetUniformLocation(ctx.program, "u_projection"), 1, GL_FALSE, &projection[0][0]);
+    //define perspective projection matrix
+    float ratio = ctx.width / ctx.height;
+    glm::mat4 persp = glm::perspective(75.0f, ratio, 1.0f, 50.0f);
+    glUniformMatrix4fv(glGetUniformLocation(ctx.program, "u_projection"), 1, GL_FALSE, &persp[0][0]);
 
-    // Define trackball matrix to move the view
-    glm::mat4 model = glm::mat4(1.0f);
-    glUniformMatrix4fv(glGetUniformLocation(ctx.program, "u_model"), 1, GL_FALSE, &model[0][0]);
 
     // ...
 
@@ -101,6 +108,13 @@ void draw_scene(Context &ctx)
 
         // Define per-object uniforms
         // ...
+        // Define trackball matrix to move the view
+        glm::mat4 model = glm::mat4(1.0f);
+        model = glm::translate(model, node.translation);
+        model = glm::scale(model, node.scale);
+        glm::mat4 rot = glm::mat4_cast(node.rotation);
+        model = model * rot;
+        glUniformMatrix4fv(glGetUniformLocation(ctx.program, "u_model"), 1, GL_FALSE, &model[0][0]);
 
         // Draw object
         glBindVertexArray(drawable.vao);
