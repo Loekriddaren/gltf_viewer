@@ -26,7 +26,7 @@ void main()
     gl_Position =   u_projection * u_view * u_model* a_position; //Apply rotation to the object
 
 
-    v_color = 0.5 * a_normal + 0.5; // maps the normal direction to an RGB color
+    //v_color = 0.5 * a_normal + 0.5; // maps the normal direction to an RGB color
 
     // Illumination
      mat4 mv = u_view * u_model; //Model-view matrix

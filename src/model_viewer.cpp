@@ -23,26 +23,46 @@
 #include <iostream>
 
 
-    static ImVec4 bgcolor = ImVec4(0.0f / 255.0f, 0.0f / 255.0f, 0.0f / 255.0f, 255.0f / 255.0f);
+static ImVec4 bgcolor = ImVec4(0.0f / 255.0f, 0.0f / 255.0f, 0.0f / 255.0f, 255.0f / 255.0f);
+
+// Struct for representing a shadow casting point light
+struct ShadowCastingLight {
+    glm::vec3 position;      // Light source position
+    glm::mat4 shadowMatrix;  // Camera matrix for shadowmap
+    GLuint shadowmap;        // Depth texture
+    GLuint shadowFBO;        // Depth framebuffer
+    float shadowBias;        // Bias for depth comparison
+};
+
 // Struct for our application context
 struct Context {
     int width = 800;
     int height = 800;
+    int active_cubemap;
     GLFWwindow *window;
     gltf::GLTFAsset asset;
     gltf::DrawableList drawables;
     cg::Trackball trackball;
     GLuint program;
     GLuint emptyVAO;
+    GLuint cubemap;
+    gltf::TextureList textures;
     float elapsedTime;
-    std::string gltfFilename = "armadillo.gltf";  //"cube_rgb.gltf";
+    std::string gltfFilename = "lpshead.gltf";  //"cube_rgb.gltf";
     // Add more variables here...
     glm::vec3 ambientColor = glm::vec3(0.5, 0.05, 0.05);
     glm::vec3 diffuseColor = glm::vec3(0.0, 1.0, 0.5);
     glm::vec3 specularColor = glm::vec3(1.0, 1.0, 0.0);
     float specularPower = 80;
-    glm::vec3 lightPosition = glm::vec3(-20.0, 20.0, 10.0);
+    glm::vec3 lightPosition = glm::vec3(-3.3, 2.5, 0.0);
     float fov = 25;
+
+    // For shadow mapping
+    ShadowCastingLight light;
+    GLuint shadowProgram;
+    bool showShadowmap = false;
+    bool useShadowmap = false;
+    glm::mat4 shadowFromView;
 
     // Bools for checkboxes
     bool perspective = true;
@@ -50,6 +70,10 @@ struct Context {
     bool diffuse = true;
     bool specular = true;
     bool normals = false;
+    bool gammaCorrection = false;
+    bool useCubemap = false;
+    bool useTexCoord = false;
+    bool useTexture = false;
 };
 
 // Returns the absolute path to the src/shader directory
@@ -61,6 +85,16 @@ std::string shader_dir(void)
         std::exit(EXIT_FAILURE);
     }
     return rootDir + "/src/shaders/";
+}
+
+std::string cubemap_dir(void)
+{
+    std::string rootDir = cg::get_env_var("MODEL_VIEWER_ROOT");
+    if (rootDir.empty()) {
+        std::cout << "Error: MODEL_VIEWER_ROOT is not set." << std::endl;
+        std::exit(EXIT_FAILURE);
+    }
+    return rootDir + "/assets/cubemaps/";
 }
 
 // Returns the absolute path to the assets/gltf directory
@@ -76,11 +110,51 @@ std::string gltf_dir(void)
 
 void do_initialization(Context &ctx)
 {
-    ctx.program = cg::load_shader_program(shader_dir() + "mesh_part_2_4.vert", shader_dir() + "mesh_part_2_4.frag");
+    ctx.program = cg::load_shader_program(shader_dir() + "mesh_part_3_4.vert", shader_dir() + "mesh_part_3_4.frag");
+
+
+    //load the textures for reflectifve cubemaps
+    std::string textt = "RomeChurch";
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_CUBE_MAP,
+                  cg::load_cubemap(cubemap_dir() + "/"+textt+"/prefiltered/0.125/"));
+    glActiveTexture(GL_TEXTURE0 + 1);
+    glBindTexture(GL_TEXTURE_CUBE_MAP,
+                  cg::load_cubemap(cubemap_dir() + "/" + textt + "/prefiltered/0.5/"));
+    glActiveTexture(GL_TEXTURE0 + 2);
+    glBindTexture(GL_TEXTURE_CUBE_MAP,
+                  cg::load_cubemap(cubemap_dir() + "/" + textt + "/prefiltered/2/"));
+    glActiveTexture(GL_TEXTURE0 + 3);
+    glBindTexture(GL_TEXTURE_CUBE_MAP,
+                  cg::load_cubemap(cubemap_dir() + "/" + textt + "/prefiltered/8/"));
+    glActiveTexture(GL_TEXTURE0 + 4);
+    glBindTexture(GL_TEXTURE_CUBE_MAP,
+                  cg::load_cubemap(cubemap_dir() + "/" + textt + "/prefiltered/32/"));
+    glActiveTexture(GL_TEXTURE0 + 5);
+    glBindTexture(GL_TEXTURE_CUBE_MAP,
+                  cg::load_cubemap(cubemap_dir() + "/" + textt + "/prefiltered/128/"));
+    glActiveTexture(GL_TEXTURE0 + 6);
+    glBindTexture(GL_TEXTURE_CUBE_MAP,
+                  cg::load_cubemap(cubemap_dir() + "/" + textt + "/prefiltered/512/"));
+    glActiveTexture(GL_TEXTURE0 + 7);
+    glBindTexture(GL_TEXTURE_CUBE_MAP,
+                  cg::load_cubemap(cubemap_dir() + "/" + textt + "/prefiltered/2048/"));
+
 
     gltf::load_gltf_asset(ctx.gltfFilename, gltf_dir(), ctx.asset);
     gltf::create_drawables_from_gltf_asset(ctx.drawables, ctx.asset);
+    gltf::create_textures_from_gltf_asset(ctx.textures, ctx.asset);
+
+    // For shadow mapping
+    ctx.shadowProgram = cg::load_shader_program(shader_dir() + "shadow.vert", shader_dir() + "shadow.frag");
+    ctx.light.shadowmap = cg::create_depth_texture(1024, 1024);
+    ctx.light.shadowFBO = cg::create_depth_framebuffer(ctx.light.shadowmap);
+    ctx.light.position = ctx.lightPosition;
+    ctx.light.shadowBias = 0.001f;
+    ctx.light.shadowMatrix = glm::mat4(1.0f);
 }
+
+
 
 void draw_scene(Context &ctx)
 {
@@ -92,8 +166,17 @@ void draw_scene(Context &ctx)
 
     // Define per-scene uniforms
     glUniform1f(glGetUniformLocation(ctx.program, "u_time"), ctx.elapsedTime);
+    
 
+    glUniform1i(glGetUniformLocation(ctx.program, "u_cubemap"), ctx.active_cubemap);
 
+    // Pass on uniforms for different render modes
+    glUniform1i(glGetUniformLocation(ctx.program, "u_useCubemap"), ctx.useCubemap);
+    glUniform1f(glGetUniformLocation(ctx.program, "u_normals"), ctx.normals);
+    glUniform1f(glGetUniformLocation(ctx.program, "u_useTexCoord"), ctx.useTexCoord);
+    glUniform1f(glGetUniformLocation(ctx.program, "u_useTexture"), ctx.useTexture);
+    glUniform1f(glGetUniformLocation(ctx.program, "u_gammaCorrection"), ctx.gammaCorrection);
+    glUniform1f(glGetUniformLocation(ctx.program, "u_useShadowmap"), ctx.useShadowmap);
 
 
     // Define trackball matrix to move the view
@@ -131,7 +214,14 @@ void draw_scene(Context &ctx)
     glUniform3fv(glGetUniformLocation(ctx.program, "u_specularColor"), 1, &specular[0]);
     glUniform3fv(glGetUniformLocation(ctx.program, "u_lightPosition"), 1, &ctx.lightPosition[0]);
     glUniform1f(glGetUniformLocation(ctx.program, "u_specularPower"), ctx.specularPower);
-    glUniform1f(glGetUniformLocation(ctx.program, "u_normals"), ctx.normals);
+
+    // Pass matrix for shadow calculations
+    glUniformMatrix4fv(glGetUniformLocation(ctx.program, "u_shadowFromView"), 1, GL_FALSE, &ctx.light.shadowMatrix[0][0]);
+    glActiveTexture(GL_TEXTURE9);
+    glBindTexture(GL_TEXTURE_2D, ctx.light.shadowmap);
+    glUniform1i(glGetUniformLocation(ctx.program, "u_shadowmap"), 9);
+    glUniform1f(glGetUniformLocation(ctx.program, "u_shadowBias"), ctx.light.shadowBias);
+
  
 
     // Draw scene
@@ -149,6 +239,27 @@ void draw_scene(Context &ctx)
         model = model * rot;
         glUniformMatrix4fv(glGetUniformLocation(ctx.program, "u_model"), 1, GL_FALSE, &model[0][0]);
 
+        // Define per-object texture
+        const gltf::Mesh &mesh = ctx.asset.meshes[node.mesh];
+        if (mesh.primitives[0].hasMaterial) {
+            const gltf::Primitive &primitive = mesh.primitives[0];
+            const gltf::Material &material = ctx.asset.materials[primitive.material];
+            const gltf::PBRMetallicRoughness &pbr = material.pbrMetallicRoughness;
+
+            // Define material textures and uniforms
+            if (pbr.hasBaseColorTexture) {
+                GLuint texture_id = ctx.textures[pbr.baseColorTexture.index];
+                glActiveTexture(GL_TEXTURE8);
+                glBindTexture(GL_TEXTURE_2D, texture_id);
+                glUniform1i(glGetUniformLocation(ctx.program, "u_texture"), 8);
+
+            } else {
+                // If no texture available, always disable the use of textures in shader
+                ctx.useTexCoord = false;
+                ctx.useTexture = false;
+            }
+        }
+
         // Draw object
         glBindVertexArray(drawable.vao);
         glDrawElements(GL_TRIANGLES, drawable.indexCount, drawable.indexType,
@@ -161,6 +272,61 @@ void draw_scene(Context &ctx)
     glUseProgram(0);
 }
 
+// Update the shadowmap and shadow matrix for a light source
+void update_shadowmap(Context &ctx, ShadowCastingLight &light, GLuint shadowFBO)
+{
+    // Set up rendering to shadowmap framebuffer
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, shadowFBO);
+    if (shadowFBO) glViewport(0, 0, 1024, 1024);  // TODO Set viewport to shadowmap size
+    glClear(GL_DEPTH_BUFFER_BIT);                 // Clear depth values to 1.0
+
+    // Set up pipeline
+    glUseProgram(ctx.shadowProgram);
+    glEnable(GL_DEPTH_TEST);  // Enable Z-buffering
+
+    // Matrices for the shadowmap camera.
+    // The view matrix is a lookAt-matrix computed from the light source position
+    // The projection matrix is a frustum that covers the parts of the scene that recieves shadows
+    light.position = ctx.lightPosition;
+    glm::mat4 view =
+        glm::lookAt(ctx.lightPosition, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+
+    glm::mat4 proj = glm::perspective(glm::radians(30.0f), 1.0f, 1.0f, 500.0f);
+
+    glUniformMatrix4fv(glGetUniformLocation(ctx.shadowProgram, "u_view"), 1, GL_FALSE, &view[0][0]);
+    glUniformMatrix4fv(glGetUniformLocation(ctx.shadowProgram, "u_proj"), 1, GL_FALSE, &proj[0][0]);
+
+    // Store updated shadow matrix for use in draw_scene()
+    light.shadowMatrix = proj * view;
+
+    // Draw scene
+    for (unsigned i = 0; i < ctx.asset.nodes.size(); ++i) {
+        const gltf::Node &node = ctx.asset.nodes[i];
+        const gltf::Drawable &drawable = ctx.drawables[node.mesh];
+
+        // Define the model matrix for the drawable
+        glm::mat4 model = glm::mat4(1.0f);
+        model = glm::translate(model, node.translation);
+        model = glm::scale(model, node.scale);
+        glm::mat4 rot = glm::mat4_cast(node.rotation);
+        model = model * rot;
+        glUniformMatrix4fv(glGetUniformLocation(ctx.shadowProgram, "u_model"), 1, GL_FALSE,
+                           &model[0][0]);
+
+        // Draw object
+        glBindVertexArray(drawable.vao);
+        glDrawElements(GL_TRIANGLES, drawable.indexCount, drawable.indexType,
+                       (GLvoid *)(intptr_t)drawable.indexByteOffset);
+        glBindVertexArray(0);
+    }
+
+    // Clean up
+    cg::reset_gl_render_state();
+    glUseProgram(0);
+    glViewport(0, 0, ctx.width, ctx.height);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+}
+
 void do_rendering(Context &ctx)
 {
     // Clear render states at the start of each frame
@@ -171,7 +337,15 @@ void do_rendering(Context &ctx)
     //glClearColor(1.0f, 0.5f, 0.0f, 0.0f);  //orange bg
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+    update_shadowmap(ctx, ctx.light, ctx.light.shadowFBO);
     draw_scene(ctx);
+
+    if (ctx.showShadowmap) {
+        // Draw shadowmap on default screen framebuffer
+        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        update_shadowmap(ctx, ctx.light, 0);
+    }
 }
 
 void reload_shaders(Context *ctx)
@@ -258,7 +432,9 @@ void DrawGui(Context &ctx)
     ImGui::ColorEdit3("Diffuse color", &ctx.diffuseColor[0]);
     ImGui::ColorEdit3("Specular color", &ctx.specularColor[0]);
     ImGui::SliderFloat("Specular power", &ctx.specularPower, 0.0f, 150.0f);
-    ImGui::SliderFloat3("Light position", &ctx.lightPosition[0], -50.0f, 50.0f);
+    ImGui::SliderFloat3("Light position", &ctx.lightPosition[0], -20.0f, 20.0f);
+    ImGui::SliderInt("Active Cubemap", &ctx.active_cubemap, 0, 7);
+    ImGui::SliderFloat("Shadow bias", &ctx.light.shadowBias, 0.0f, 0.1f);
 
     // Combobox for perspective/orthogonal projection
     const char *items[] = {"Perspective projection", "Orthogonal projection"};
@@ -288,6 +464,17 @@ void DrawGui(Context &ctx)
     ImGui::Checkbox("Diffuse light", &ctx.diffuse);
     ImGui::Checkbox("Specular light", &ctx.specular);
     ImGui::Checkbox("Show normals", &ctx.normals);
+    ImGui::Checkbox("Gamma correction", &ctx.gammaCorrection);
+    ImGui::Checkbox("Use cubemap", &ctx.useCubemap);
+    ImGui::Checkbox("Show texture coordinates", &ctx.useTexCoord);
+    ImGui::Checkbox("Use texture", &ctx.useTexture);
+    ImGui::Checkbox("Show shadowmap", &ctx.showShadowmap);
+    ImGui::Checkbox("Use shadowmap", &ctx.useShadowmap);
+
+    
+    
+
+
 
     ImGui::End();
 

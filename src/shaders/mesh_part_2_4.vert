@@ -11,7 +11,7 @@ uniform vec3 u_diffuseColor; // The diffuse surface color of the model
 uniform vec3 u_specularColor; // The specular surface color of the model
 uniform float u_specularPower; // The specular power
 uniform vec3 u_lightPosition; // The position of your light source
-uniform bool u_normals;
+uniform bool u_normals; // Toggle between RGB-normals or illumination
 
 // ...
 
@@ -28,6 +28,7 @@ void main()
     // Rotation
     gl_Position =   u_projection * u_view * u_model* a_position; //Apply rotation to the object
 
+    // Choose between displaying RGB-normals or illumination
     if(u_normals)
     {
         v_color = 0.5 * a_normal + 0.5; // maps the normal direction to an RGB color
@@ -47,7 +48,7 @@ void main()
     
         vec3 H = normalize(L+V); // Calculate the half-way vector
     
-        float ambient = 0.5; // Calculate the ambient reflection term
+        float ambient = 0.5; // The (constant) ambient reflection term
     
         float diffuse = max(0.0, dot(N, L)); // Calculate the diffuse (Lambertian) reflection term
 

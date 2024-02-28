@@ -33,4 +33,8 @@ GLuint create_depth_texture(int width=512, int height=512);
 
 GLuint create_depth_framebuffer(GLuint depth_texture);
 
+GLuint create_color_texture(int width = 512, int height = 512);
+
+GLuint create_color_framebuffer(GLuint color_texture, GLuint depth_texture);
+
 }  // namespace cg

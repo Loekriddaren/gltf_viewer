@@ -236,7 +236,7 @@ GLuint load_cubemap_prefiltered(const std::string &dirname)
     for (unsigned i = 0; i < nLevels; ++i) {
         for (unsigned j = 0; j < nSides; ++j) {
             // Load image for current mip level and cube side
-            std::string filename = dirname + "/" + levels[i] + "/" + filenames[j];
+            std::string filename = dirname + "/prefiltered/" + levels[i] + "/" + filenames[j];
             int width, height, comp;
             uint8_t *image = stbi_load(filename.c_str(), &width, &height, &comp, 4);
             if (image == nullptr) {
