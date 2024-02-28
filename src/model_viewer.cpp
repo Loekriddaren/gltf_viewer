@@ -28,14 +28,16 @@
 struct Context {
     int width = 800;
     int height = 800;
+    int active_cubemap;
     GLFWwindow *window;
     gltf::GLTFAsset asset;
     gltf::DrawableList drawables;
     cg::Trackball trackball;
     GLuint program;
     GLuint emptyVAO;
+    GLuint cubemap;
     float elapsedTime;
-    std::string gltfFilename = "armadillo.gltf";  //"cube_rgb.gltf";
+    std::string gltfFilename = "gargo.gltf";  //"cube_rgb.gltf";
     // Add more variables here...
     glm::vec3 ambientColor = glm::vec3(0.5, 0.05, 0.05);
     glm::vec3 diffuseColor = glm::vec3(0.0, 1.0, 0.5);
@@ -63,6 +65,16 @@ std::string shader_dir(void)
     return rootDir + "/src/shaders/";
 }
 
+std::string cubemap_dir(void)
+{
+    std::string rootDir = cg::get_env_var("MODEL_VIEWER_ROOT");
+    if (rootDir.empty()) {
+        std::cout << "Error: MODEL_VIEWER_ROOT is not set." << std::endl;
+        std::exit(EXIT_FAILURE);
+    }
+    return rootDir + "/assets/cubemaps/";
+}
+
 // Returns the absolute path to the assets/gltf directory
 std::string gltf_dir(void)
 {
@@ -76,11 +88,42 @@ std::string gltf_dir(void)
 
 void do_initialization(Context &ctx)
 {
-    ctx.program = cg::load_shader_program(shader_dir() + "mesh_part_2_4.vert", shader_dir() + "mesh_part_2_4.frag");
+    ctx.program = cg::load_shader_program(shader_dir() + "mesh_part_3_2.vert", shader_dir() + "mesh_part_3_2.frag");
+
+
+    //load the textures for reflectifve cubemaps
+    std::string textt = "RomeChurch";
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_CUBE_MAP,
+                  cg::load_cubemap(cubemap_dir() + "/"+textt+"/prefiltered/0.125/"));
+    glActiveTexture(GL_TEXTURE0 + 1);
+    glBindTexture(GL_TEXTURE_CUBE_MAP,
+                  cg::load_cubemap(cubemap_dir() + "/" + textt + "/prefiltered/0.5/"));
+    glActiveTexture(GL_TEXTURE0 + 2);
+    glBindTexture(GL_TEXTURE_CUBE_MAP,
+                  cg::load_cubemap(cubemap_dir() + "/" + textt + "/prefiltered/2/"));
+    glActiveTexture(GL_TEXTURE0 + 3);
+    glBindTexture(GL_TEXTURE_CUBE_MAP,
+                  cg::load_cubemap(cubemap_dir() + "/" + textt + "/prefiltered/8/"));
+    glActiveTexture(GL_TEXTURE0 + 4);
+    glBindTexture(GL_TEXTURE_CUBE_MAP,
+                  cg::load_cubemap(cubemap_dir() + "/" + textt + "/prefiltered/32/"));
+    glActiveTexture(GL_TEXTURE0 + 5);
+    glBindTexture(GL_TEXTURE_CUBE_MAP,
+                  cg::load_cubemap(cubemap_dir() + "/" + textt + "/prefiltered/128/"));
+    glActiveTexture(GL_TEXTURE0 + 6);
+    glBindTexture(GL_TEXTURE_CUBE_MAP,
+                  cg::load_cubemap(cubemap_dir() + "/" + textt + "/prefiltered/512/"));
+    glActiveTexture(GL_TEXTURE0 + 7);
+    glBindTexture(GL_TEXTURE_CUBE_MAP,
+                  cg::load_cubemap(cubemap_dir() + "/" + textt + "/prefiltered/2048/"));
+
 
     gltf::load_gltf_asset(ctx.gltfFilename, gltf_dir(), ctx.asset);
     gltf::create_drawables_from_gltf_asset(ctx.drawables, ctx.asset);
 }
+
+
 
 void draw_scene(Context &ctx)
 {
@@ -92,8 +135,10 @@ void draw_scene(Context &ctx)
 
     // Define per-scene uniforms
     glUniform1f(glGetUniformLocation(ctx.program, "u_time"), ctx.elapsedTime);
+    
 
-
+    glUniform1i(glGetUniformLocation(ctx.program, "u_cubemap"), ctx.active_cubemap);
+    //glUniform1i(glGetUniformLocation(ctx.program, "u_lod"), ctx.active_cubemap);
 
 
     // Define trackball matrix to move the view
@@ -259,6 +304,7 @@ void DrawGui(Context &ctx)
     ImGui::ColorEdit3("Specular color", &ctx.specularColor[0]);
     ImGui::SliderFloat("Specular power", &ctx.specularPower, 0.0f, 150.0f);
     ImGui::SliderFloat3("Light position", &ctx.lightPosition[0], -50.0f, 50.0f);
+    ImGui::SliderInt("Active Cubemap", &ctx.active_cubemap, 0, 7);
 
     // Combobox for perspective/orthogonal projection
     const char *items[] = {"Perspective projection", "Orthogonal projection"};
